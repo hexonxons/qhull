@@ -1,0 +1,65 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=cmake
+
+override_dh_auto_build:
+	dh_auto_build
+	@echo Building man pages
+	cd debian &&							\
+	  for info in "qconvex:compute the convex hull"			\
+	              "qdelaunay:compute the Delaunay triangulation"	\
+	              "qhalf:halfspace intersection about a point"	\
+	              "qvoronoi:compute the Voronoi diagram" ; do	\
+	      comm=$$(echo  $$info | cut -d: -f1) &&			\
+	      purp=$$(echo  $$info | cut -d: -f2) &&			\
+	      echo -n Building man page for $$comm... &&		\
+	      sed "s/#command#/$$comm/;s/#purpose#/$$purp/"		\
+	          manpage.in > $$comm.xml &&				\
+	      docbook2x-man $$comm.xml &&				\
+	      echo " done" ;						\
+	  done
+
+override_dh_auto_test:
+	env PATH=$(CURDIR)/src:$${PATH} eg/q_test
+
+override_dh_auto_install:
+	dh_auto_install
+	@echo No need for extra copy of license.
+	rm --verbose debian/tmp/usr/share/doc/qhull/COPYING.txt || true
+	@echo No need for doc/ copies of man pages in ../../man/man1/ or for other formats.
+	@for f in qhull rbox; do \
+	  for ext in man txt htm; do \
+	    rm --verbose debian/tmp/usr/share/doc/qhull/$$f.$$ext || true; \
+	  done \
+	done
+	@-mv --verbose debian/tmp/usr/lib/libqhullstatic.a debian/tmp/usr/lib/libqhull.a
+	@-mv --verbose debian/tmp/usr/lib/libqhullstatic_p.a debian/tmp/usr/lib/libqhull_p.a
+	find debian/tmp/usr/lib -type f -name '*.so*' \
+	 -exec chrpath --list '{}' ';' \
+	 -exec chrpath --delete '{}' ';'
+	@echo 'Convenience links for #include <qhull/...> and #include <qhull/qhull.h>'
+	mkdir -p debian/tmp/usr/include/qhull
+	(cd debian/tmp/usr/include/qhull \
+	 && ln --verbose -s ../libqhull/* ../libqhullcpp/* ./ \
+	 && ln --verbose -s libqhull.h qhull.h)
+	echo Convenience links for backwards compatibility \
+	 > debian/tmp/usr/include/qhull/README
+
+override_dh_installchangelogs:
+	dh_installchangelogs src/Changes.txt
+
+override_dh_link:
+	mkdir -p debian/libqhull-doc/usr/share/doc/libqhull-doc/include
+	@for f in $$(cd debian/tmp && echo usr/include/libqhull/*.h); do \
+	  ln --verbose -s /$$f debian/libqhull-doc/usr/share/doc/libqhull-doc/include/; \
+	done
+	dh_link
+
+override_dh_compress:
+	dh_compress -X.c -X.h -X.txt
